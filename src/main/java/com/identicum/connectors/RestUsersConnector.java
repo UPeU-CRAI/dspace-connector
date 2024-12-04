@@ -4,17 +4,18 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.codec.binary.StringUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpDelete;
-import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPatch;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpRequestBase;
-import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.util.EntityUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.classic.methods.HttpDelete;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpPatch;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.classic.methods.HttpPut;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.identityconnectors.common.StringUtil;
 import org.identityconnectors.common.logging.Log;
 import org.identityconnectors.framework.api.operations.TestApiOp;
@@ -111,74 +112,73 @@ public class RestUsersConnector
 		return schemaBuilder.build();
 	}
 
-	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions)
-	{
+	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering create with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
 		JSONObject jo = new JSONObject();
-		
-		for(Attribute attr:attributes)
-		{
+
+		for (Attribute attr : attributes) {
 			LOG.ok("Reading attribute {0} with value {1}", attr.getName(), attr.getValue());
-			jo.put(attr.getName(), getStringAttr( attributes, attr.getName()) );
+			jo.put(attr.getName(), getStringAttr(attributes, attr.getName()));
 		}
-		
+
 		String endpoint = getConfiguration().getServiceAddress();
-		if(ObjectClass.ACCOUNT.is( objectClass.getObjectClassValue()))
-		{
+		if (ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
 			endpoint = endpoint.concat(USERS_ENDPOINT);
-		}
-		else if(ObjectClass.GROUP.is( objectClass.getObjectClassValue()))
-		{
+		} else if (ObjectClass.GROUP.is(objectClass.getObjectClassValue())) {
 			endpoint = endpoint.concat(ROLES_ENDPOINT);
+		} else {
+			throw new ConnectorException("Unknown object class " + objectClass);
 		}
-		else
-		{
-			throw new ConnectorException("Unknown object class "+objectClass);
-		}
-		
-		HttpEntityEnclosingRequestBase request = new HttpPost(endpoint);
+
+		// Crear la solicitud HttpPost directamente
+		HttpPost request = new HttpPost(endpoint);
+
+		// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
+		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
+		request.setEntity(entity);
+
+		// Ejecutar la solicitud con el método `callRequest`
 		response = callRequest(request, jo);
-		
+
 		String newUid = response.get("id").toString();
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
-	
-	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions)
-	{
+
+	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering update with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
-		
+
 		JSONObject jo = new JSONObject();
-		
+
 		// midPoint --> Json
-		for(Attribute attribute : attributes)
-		{
+		for (Attribute attribute : attributes) {
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
-			jo.put(attribute.getName(), getStringAttr(attributes,attribute.getName()));
+			jo.put(attribute.getName(), getStringAttr(attributes, attribute.getName()));
 		}
 		LOG.info("Delta a enviar por Rest: {0}", jo.toString());
+
 		String endpoint = getConfiguration().getServiceAddress();
-		if(ObjectClass.ACCOUNT.is( objectClass.getObjectClassValue()))
-		{
+		if (ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
 			endpoint = endpoint.concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
+		} else if (ObjectClass.GROUP.is(objectClass.getObjectClassValue())) {
+			endpoint = endpoint.concat(ROLES_ENDPOINT) + "/" + uid.getUidValue();
+		} else {
+			throw new ConnectorException("Unknown object class " + objectClass);
 		}
-		else if(ObjectClass.GROUP.is( objectClass.getObjectClassValue()))
-		{
-			endpoint = endpoint.concat(ROLES_ENDPOINT)+ "/" + uid.getUidValue();
-		}
-		else
-		{
-			throw new ConnectorException("Unknown object class "+objectClass);
-		}
-		try
-		{
-			HttpEntityEnclosingRequestBase request = new HttpPatch(endpoint);
+
+		try {
+			// Crear la solicitud HttpPatch directamente
+			HttpPatch request = new HttpPatch(endpoint);
+
+			// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
+			StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
+			request.setEntity(entity);
+
+			// Ejecutar la solicitud con el método `callRequest`
 			response = callRequest(request, jo);
-		}
-		catch (Exception io)
-		{
+		} catch (Exception io) {
 			throw new RuntimeException("Error modificando usuario por rest", io);
 		}
 
@@ -186,35 +186,37 @@ public class RestUsersConnector
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
-	
+
 	@Override
-	public Uid addAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions)
-	{
+	public Uid addAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering addValue with objectClass: {0}", objectClass.toString());
-		try
-		{
-			for(Attribute attribute : attributes)
-			{
+		try {
+			for (Attribute attribute : attributes) {
 				LOG.info("AddAttributeValue - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
-				if( attribute.getName().equals("roles"))
-				{		
+				if (attribute.getName().equals("roles")) {
 					List<Object> addedRoles = attribute.getValue();
-					
-					for(Object role:addedRoles)
-					{
+
+					for (Object role : addedRoles) {
 						JSONObject json = new JSONObject();
 						json.put("id", role.toString());
-						
-						String endpoint = String.format("%s/%s/%s/%s", getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT);
+
+						String endpoint = String.format("%s/%s/%s/%s",
+								getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT);
 						LOG.info("Adding role {0} for user {1} on endpoint {2}", role.toString(), uid.getUidValue(), endpoint);
-						HttpEntityEnclosingRequestBase request = new HttpPost(endpoint);
+
+						// Crear la solicitud HttpPost directamente
+						HttpPost request = new HttpPost(endpoint);
+
+						// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
+						StringEntity entity = new StringEntity(json.toString(), ContentType.APPLICATION_JSON);
+						request.setEntity(entity);
+
+						// Ejecutar la solicitud con el método `callRequest`
 						callRequest(request, json);
 					}
 				}
 			}
-		}
-		catch (Exception io)
-		{
+		} catch (Exception io) {
 			throw new RuntimeException("Error modificando usuario por rest", io);
 		}
 		return uid;
@@ -249,37 +251,32 @@ public class RestUsersConnector
 		return uid;
 	}
 
-	protected JSONObject callRequest(HttpEntityEnclosingRequestBase request, JSONObject jo) //throws IOException
-	{
-		// don't log request here - password field !!!
-		LOG.ok("Request URI: {0}", request.getURI());
+	protected JSONObject callRequest(HttpPost request, JSONObject jo) {
+		// don't log sensitive fields like passwords in production
+		LOG.ok("Request URI: {0}", request.getUri());
 		LOG.ok("Request body: {0}", jo.toString());
 		request.setHeader("Content-Type", "application/json");
 
-		// authHeader(request);
-
-		
-		
-		HttpEntity entity = new ByteArrayEntity(StringUtils.getBytesUtf8(jo.toString()));
+		// Add the JSON body to the request
+		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
-		CloseableHttpResponse response = execute(request);
-		LOG.ok("response: {0}", response);
 
-		this.processResponseErrors(response);
-		// processDrupalResponseErrors(response);
+		// Execute the request and handle the response
+		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
+			LOG.ok("Response status: {0}", response.getCode());
 
-		String result;
-		try
-		{
-			result = EntityUtils.toString(response.getEntity());
+			// Check for errors in the response
+			this.processResponseErrors(response);
+
+			// Convert the response entity to a string
+			String result = EntityUtils.toString(response.getEntity());
+			LOG.ok("Response body: {0}", result);
+
+			// Return the result as a JSONObject
+			return new JSONObject(result);
+		} catch (IOException e) {
+			throw new ConnectorException("Error reading API response.", e);
 		}
-		catch(IOException io)
-		{
-			throw new ConnectorException("Error reading api response.", io);
-		}
-		LOG.ok("response body: {0}", result);
-		closeResponse(response);
-		return new JSONObject(result);
 	}
 
 	protected String callRequest(HttpRequestBase request) throws IOException
