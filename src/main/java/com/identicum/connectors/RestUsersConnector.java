@@ -1,20 +1,13 @@
 package com.identicum.connectors;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.hc.core5.http.ClassicHttpRequest;
-import org.apache.hc.core5.http.ClassicHttpResponse;
-import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.client5.http.classic.methods.*;
+import org.apache.hc.core5.http.*;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import org.apache.hc.client5.http.classic.methods.HttpDelete;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.classic.methods.HttpPatch;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.identityconnectors.common.StringUtil;
@@ -140,9 +133,13 @@ public class RestUsersConnector
 		request.setEntity(entity);
 
 		// Ejecutar la solicitud con el método `callRequest`
-		response = callRequest(request, jo);
+        try {
+            response = callRequest(request, jo);
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
 
-		String newUid = response.get("id").toString();
+        String newUid = response.get("id").toString();
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
@@ -171,7 +168,7 @@ public class RestUsersConnector
 
 		try {
 			// Crear la solicitud HttpPatch directamente
-			HttpPatch request = new HttpPatch(endpoint);
+			HttpPost request = new HttpPost(endpoint);
 
 			// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
 			StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
@@ -252,7 +249,7 @@ public class RestUsersConnector
 		return uid;
 	}
 
-	protected JSONObject callRequest(HttpPost request, JSONObject jo) {
+	protected JSONObject callRequest(HttpPost request, JSONObject jo) throws URISyntaxException {
 		// don't log sensitive fields like passwords in production
 		LOG.ok("Request URI: {0}", request.getUri());
 		LOG.ok("Request body: {0}", jo.toString());
@@ -267,7 +264,7 @@ public class RestUsersConnector
 			LOG.ok("Response status: {0}", response.getCode());
 
 			// Check for errors in the response
-			this.processResponseErrors(response);
+			this.processResponseErrors((CloseableHttpResponse) response);
 
 			// Convert the response entity to a string
 			String result = EntityUtils.toString(response.getEntity());
@@ -277,17 +274,18 @@ public class RestUsersConnector
 			return new JSONObject(result);
 		} catch (IOException e) {
 			throw new ConnectorException("Error reading API response.", e);
-		}
-	}
+		} catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-	protected String callRequest(ClassicHttpRequest request) throws IOException
-	{
-		LOG.ok("request URI: {0}", request.getURI());
+	protected String callRequest(ClassicHttpRequest request) throws IOException, ParseException {
+		LOG.ok("request URI: {0}", request.getRequestUri());
 		request.setHeader("Content-Type", "application/json");
 
 		// authHeader(request);
 
-		CloseableHttpResponse response = execute(request);
+		CloseableHttpResponse response = execute((HttpUriRequest) request);
 		LOG.ok("response: {0}", response);
 
 		super.processResponseErrors(response);
@@ -300,18 +298,18 @@ public class RestUsersConnector
 	}
 	
 	public void processResponseErrors(CloseableHttpResponse response) {
-        int statusCode = response.getStatusLine().getStatusCode();
-        if (statusCode >= 200 && statusCode <= 299) {
+		int statusCode = response.getCode();
+		if (statusCode >= 200 && statusCode <= 299) {
             return;
         }
         String responseBody = null;
         try {
             responseBody = EntityUtils.toString(response.getEntity());
-        } catch (IOException e) {
+        } catch (IOException | ParseException e) {
             LOG.warn("cannot read response body: " + e, e);
         }
 
-        String message = "HTTP error " + statusCode + " " + response.getStatusLine().getReasonPhrase() + " : " + responseBody;
+		String message = "HTTP error " + statusCode + " " + response.getReasonPhrase() + " : " + responseBody;
         LOG.error("{0}", message);
         if (statusCode == 400 || statusCode == 405 || statusCode == 406) {
             closeResponse(response);
@@ -414,15 +412,14 @@ public class RestUsersConnector
 				}
 			}
 		}
-		catch (IOException e)
+		catch (IOException | ParseException e)
 		{
 			LOG.error("Error quering objects on Rest Resource", e);
 			throw new RuntimeException(e.getMessage(), e);
 		}
 	}
 	
-	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException 
-	{
+	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException {
         JSONArray users = new JSONArray(callRequest(request));
         LOG.ok("Number of users: {0}", users.length());
 
@@ -456,8 +453,7 @@ public class RestUsersConnector
 		return connectorObject;
 	}
 	
-	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException 
-	{
+	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException {
         JSONArray users = new JSONArray(callRequest(request));
         LOG.ok("Number of roles: {0}", users.length());
 
