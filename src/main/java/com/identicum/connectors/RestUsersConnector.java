@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
@@ -279,7 +280,7 @@ public class RestUsersConnector
 		}
 	}
 
-	protected String callRequest(HttpRequestBase request) throws IOException
+	protected String callRequest(ClassicHttpRequest request) throws IOException
 	{
 		LOG.ok("request URI: {0}", request.getURI());
 		request.setHeader("Content-Type", "application/json");
