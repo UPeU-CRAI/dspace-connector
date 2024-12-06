@@ -129,6 +129,10 @@ public class RestUsersConnector
 		return schemaBuilder.build();
 	}
 
+	// ==============================
+	// Bloque de Operaciones CRUD
+	// ==============================
+
 	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering create with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
@@ -148,21 +152,18 @@ public class RestUsersConnector
 			throw new ConnectorException("Unknown object class " + objectClass);
 		}
 
-		// Crear la solicitud HttpPost directamente
 		HttpPost request = new HttpPost(endpoint);
-
-		// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
-		// Ejecutar la solicitud con el método `callRequest`
-        try {
-            response = callRequest(request, jo);
-        } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
-        }
+		// Llamada centralizada que ya maneja la autenticación
+		try {
+			response = callRequest(request, jo);
+		} catch (URISyntaxException e) {
+			throw new RuntimeException(e);
+		}
 
-        String newUid = response.get("id").toString();
+		String newUid = response.get("id").toString();
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
@@ -172,13 +173,10 @@ public class RestUsersConnector
 		JSONObject response = null;
 
 		JSONObject jo = new JSONObject();
-
-		// midPoint --> Json
 		for (Attribute attribute : attributes) {
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
 			jo.put(attribute.getName(), getStringAttr(attributes, attribute.getName()));
 		}
-		LOG.info("Delta a enviar por Rest: {0}", jo.toString());
 
 		String endpoint = getConfiguration().getServiceAddress();
 		if (ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
@@ -189,15 +187,12 @@ public class RestUsersConnector
 			throw new ConnectorException("Unknown object class " + objectClass);
 		}
 
+		HttpPut request = new HttpPut(endpoint);
+		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
+		request.setEntity(entity);
+
+		// Llamada centralizada que ya maneja la autenticación
 		try {
-			// Crear la solicitud HttpPatch directamente
-			HttpPost request = new HttpPost(endpoint);
-
-			// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
-			StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
-			request.setEntity(entity);
-
-			// Ejecutar la solicitud con el método `callRequest`
 			response = callRequest(request, jo);
 		} catch (Exception io) {
 			throw new RuntimeException("Error modificando usuario por rest", io);
@@ -206,6 +201,20 @@ public class RestUsersConnector
 		String newUid = response.get("id").toString();
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
+	}
+
+	@Override
+	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options) {
+		LOG.ok("Entering delete with objectClass: {0}", objectClass.toString());
+		try {
+			String endpoint = getConfiguration().getServiceAddress() + USERS_ENDPOINT + "/" + uid.getUidValue();
+			HttpDelete request = new HttpDelete(endpoint);
+
+			// Llamada centralizada que ya maneja la autenticación
+			callRequest(request);
+		} catch (Exception io) {
+			throw new RuntimeException("Error eliminando usuario por rest", io);
+		}
 	}
 
 	@Override
@@ -233,7 +242,7 @@ public class RestUsersConnector
 						request.setEntity(entity);
 
 						// Ejecutar la solicitud con el método `callRequest`
-						callRequest(request, json);
+						callRequest(request, json); // `callRequest` ya maneja la autenticación.
 					}
 				}
 			}
@@ -244,48 +253,43 @@ public class RestUsersConnector
 	}
 
 	@Override
-	public Uid removeAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions)
-	{
+	public Uid removeAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering removeValue with objectClass: {0}", objectClass.toString());
-		try
-		{
-			for(Attribute attribute : attributes)
-			{
+		try {
+			for (Attribute attribute : attributes) {
 				LOG.info("RemoveAttributeValue - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
-				if( attribute.getName().equals("roles"))
-				{		
+				if (attribute.getName().equals("roles")) {
 					List<Object> revokedRoles = attribute.getValue();
-					for(Object role:revokedRoles)
-					{
-						String endpoint = String.format("%s/%s/%s/%s/%s", getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT, role.toString());
+					for (Object role : revokedRoles) {
+						String endpoint = String.format("%s/%s/%s/%s/%s",
+								getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT, role.toString());
 						LOG.info("Revoking role {0} for user {1} on endpoint {2}", role.toString(), uid.getUidValue(), endpoint);
+
 						HttpDelete request = new HttpDelete(endpoint);
-						callRequest(request);
+
+						// Ejecutar la solicitud con el método `callRequest`
+						callRequest(request); // `callRequest` ya maneja la autenticación.
 					}
 				}
 			}
-		}
-		catch (Exception io)
-		{
+		} catch (Exception io) {
 			throw new RuntimeException("Error modificando usuario por rest", io);
 		}
 		return uid;
 	}
 
+
 	// ==============================
 	// Bloque de Manejo de Solicitudes HTTP
 	// ==============================
 
-	protected JSONObject callRequest(HttpPost request, JSONObject jo) throws URISyntaxException {
+	protected JSONObject callRequest(HttpUriRequest request, JSONObject jo) throws URISyntaxException {
 		LOG.ok("Request URI: {0}", request.getUri());
 		LOG.ok("Request body: {0}", jo.toString());
 		request.setHeader("Content-Type", "application/json");
 
-		// Agregar encabezado de autorización
+		// Configurar el encabezado de autorización
 		request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
-
-		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
-		request.setEntity(entity);
 
 		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
 			LOG.ok("Response status: {0}", response.getCode());
@@ -301,7 +305,6 @@ public class RestUsersConnector
 			throw new RuntimeException(e);
 		}
 	}
-
 
 	protected String callRequest(ClassicHttpRequest request) throws IOException, ParseException {
 		LOG.ok("request URI: {0}", request.getRequestUri());
@@ -503,21 +506,6 @@ public class RestUsersConnector
 		ConnectorObject connectorObject = builder.build();
 		LOG.ok("convertRoleToConnectorObject, user: {0}, \n\tconnectorObject: {1}", role.get("id").toString(), connectorObject);
 		return connectorObject;
-	}
-
-	@Override
-	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options)
-	{
-		try
-		{
-			HttpDelete deleteReq = new HttpDelete(getConfiguration().getServiceAddress() + USERS_ENDPOINT + "/" + uid.getUidValue());
-			callRequest(deleteReq);
-		}
-		catch (Exception io)
-		{
-			throw new RuntimeException("Error modificando usuario por rest", io);
-		}
-		
 	}
 
 	@Override
