@@ -32,6 +32,7 @@ import org.identityconnectors.framework.common.objects.Schema;
 import org.identityconnectors.framework.common.objects.SchemaBuilder;
 import org.identityconnectors.framework.common.objects.Uid;
 import org.identityconnectors.framework.common.objects.filter.FilterTranslator;
+import org.identityconnectors.framework.spi.Configuration;
 import org.identityconnectors.framework.spi.ConnectorClass;
 import org.identityconnectors.framework.spi.operations.CreateOp;
 import org.identityconnectors.framework.spi.operations.DeleteOp;
@@ -61,6 +62,28 @@ public class RestUsersConnector
 	public static final String ATTR_EMAIL = "email";
 	public static final String ATTR_USERNAME = "username";
 	public static final String ATTR_ROLES = "roles";
+
+	// ==============================
+	// Bloque de authManager y Autenticación
+	// ==============================
+
+	// authManager para manejar la autenticación
+	private AuthManager authManager;
+
+	@Override
+	public void init(Configuration configuration) {
+		// Llamar al método init de la superclase
+		super.init(configuration);
+
+		// Configurar el AuthManager con el tipo correcto de configuración
+		RestUsersConfiguration restConfig = (RestUsersConfiguration) configuration;
+		authManager = new AuthManager(restConfig);
+
+		// Realizar autenticación al inicializar
+		authManager.authenticate();
+		LOG.info("Authentication completed during initialization.");
+	}
+
 
 	public Schema schema()
 	{
@@ -249,35 +272,36 @@ public class RestUsersConnector
 		return uid;
 	}
 
+	// ==============================
+	// Bloque de Manejo de Solicitudes HTTP
+	// ==============================
+
 	protected JSONObject callRequest(HttpPost request, JSONObject jo) throws URISyntaxException {
-		// don't log sensitive fields like passwords in production
 		LOG.ok("Request URI: {0}", request.getUri());
 		LOG.ok("Request body: {0}", jo.toString());
 		request.setHeader("Content-Type", "application/json");
 
-		// Add the JSON body to the request
+		// Agregar encabezado de autorización
+		request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
+
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
-		// Execute the request and handle the response
 		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
 			LOG.ok("Response status: {0}", response.getCode());
-
-			// Check for errors in the response
 			this.processResponseErrors((CloseableHttpResponse) response);
 
-			// Convert the response entity to a string
 			String result = EntityUtils.toString(response.getEntity());
 			LOG.ok("Response body: {0}", result);
 
-			// Return the result as a JSONObject
 			return new JSONObject(result);
 		} catch (IOException e) {
 			throw new ConnectorException("Error reading API response.", e);
 		} catch (ParseException e) {
-            throw new RuntimeException(e);
-        }
-    }
+			throw new RuntimeException(e);
+		}
+	}
+
 
 	protected String callRequest(ClassicHttpRequest request) throws IOException, ParseException {
 		LOG.ok("request URI: {0}", request.getRequestUri());
@@ -497,20 +521,8 @@ public class RestUsersConnector
 	}
 
 	@Override
-	public void test()
-	{
-		LOG.info("Entering test");
-		try
-		{
-			HttpGet request = new HttpGet(getConfiguration().getServiceAddress() + USERS_ENDPOINT);
-			callRequest(request);
-			LOG.info("Test OK");
-		}
-		catch (Exception io)
-		{
-			LOG.error("Error testing connector", io);
-			throw new RuntimeException("Error testing endpoint", io);
-		}
+	public void test() {
+		LOG.info("Testing connector. Authentication already performed during initialization.");
 	}
 
 }
