@@ -5,6 +5,7 @@
 	<artifactId>rest-users-connector</artifactId>
 	<version>0.0.2-SNAPSHOT</version>
 
+	<!-- https://mvnrepository.com/artifact/com.evolveum.polygon/connector-parent -->
 	<parent>
 		<groupId>com.evolveum.polygon</groupId>
 		<artifactId>connector-parent</artifactId>
