@@ -133,6 +133,19 @@ public class RestUsersConnector
 	// Bloque de Operaciones CRUD
 	// ==============================
 
+	// Este método Auxiliar se encarga de crear la estructura de metadatos compatible con DSpace:
+	private JSONArray createMetadataArray(String value) {
+		JSONArray metadataArray = new JSONArray();
+		JSONObject metadataObj = new JSONObject();
+		metadataObj.put("value", value);
+		metadataObj.put("language", JSONObject.NULL);
+		metadataObj.put("authority", JSONObject.NULL);
+		metadataObj.put("confidence", -1);
+		metadataObj.put("place", 0);
+		metadataArray.put(metadataObj);
+		return metadataArray;
+	}
+
 	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering create with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
@@ -141,52 +154,63 @@ public class RestUsersConnector
 
 		for (Attribute attr : attributes) {
 			LOG.ok("Reading attribute {0} with value {1}", attr.getName(), attr.getValue());
+			String attrName = attr.getName();
 
-			switch (attr.getName()) {
+			switch (attrName) {
+				case "firstname":
+					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
+				case "lastname":
+					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
+				case "language":
+					metadata.put("eperson.language", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
 				case "email":
-					jo.put("email", getStringAttr(attributes, "email"));
+					jo.put("email", getStringAttr(attributes, attrName));
 					break;
-				case "eperson.firstname":
-					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, "eperson.firstname")));
+				case "netid":
+					jo.put("netid", getStringAttr(attributes, attrName));
 					break;
-				case "eperson.lastname":
-					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, "eperson.lastname")));
+				case "canLogIn":
+					jo.put("canLogIn", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
 					break;
-				default:
+				case "requireCertificate":
+					jo.put("requireCertificate", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					break;
+				case "selfRegistered":
+					jo.put("selfRegistered", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					break;
+				case "name":
+					jo.put("name", getStringAttr(attributes, attrName));
 					break;
 			}
 		}
 
 		jo.put("metadata", metadata);
 
-		String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT);
+		String endpoint = getConfiguration().getServiceAddress() + "/server/api/eperson/epersons";
 
 		HttpPost request = new HttpPost(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
-		// Llamada centralizada que ya maneja la autenticación
 		try {
 			response = callRequest(request, jo);
 		} catch (URISyntaxException e) {
 			throw new RuntimeException(e);
 		}
 
+		// Obtener los enlaces del response
+		String selfLink = response.getJSONObject("_links").getJSONObject("self").getString("href");
+		String groupsLink = response.getJSONObject("_links").getJSONObject("groups").getString("href");
+
+		LOG.info("Self Link: {0}", selfLink);
+		LOG.info("Groups Link: {0}", groupsLink);
+
 		String newUid = response.getString("id");
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
-	}
-
-	private JSONArray createMetadataArray(String value) {
-		JSONArray array = new JSONArray();
-		JSONObject obj = new JSONObject();
-		obj.put("value", value);
-		obj.put("language", JSONObject.NULL);
-		obj.put("authority", JSONObject.NULL);
-		obj.put("confidence", -1);
-		obj.put("place", 0);
-		array.put(obj);
-		return array;
 	}
 
 	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
@@ -197,36 +221,59 @@ public class RestUsersConnector
 
 		for (Attribute attribute : attributes) {
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
+			String attrName = attribute.getName();
 
-			switch (attribute.getName()) {
+			switch (attrName) {
+				case "firstname":
+					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
+				case "lastname":
+					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
+				case "language":
+					metadata.put("eperson.language", createMetadataArray(getStringAttr(attributes, attrName)));
+					break;
 				case "email":
-					jo.put("email", getStringAttr(attributes, "email"));
+					jo.put("email", getStringAttr(attributes, attrName));
 					break;
-				case "eperson.firstname":
-					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, "eperson.firstname")));
+				case "netid":
+					jo.put("netid", getStringAttr(attributes, attrName));
 					break;
-				case "eperson.lastname":
-					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, "eperson.lastname")));
+				case "canLogIn":
+					jo.put("canLogIn", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
 					break;
-				default:
+				case "requireCertificate":
+					jo.put("requireCertificate", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					break;
+				case "selfRegistered":
+					jo.put("selfRegistered", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					break;
+				case "name":
+					jo.put("name", getStringAttr(attributes, attrName));
 					break;
 			}
 		}
 
 		jo.put("metadata", metadata);
 
-		String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
+		String endpoint = getConfiguration().getServiceAddress() + "/server/api/eperson/epersons/" + uid.getUidValue();
 
 		HttpPut request = new HttpPut(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
-		// Llamada centralizada que ya maneja la autenticación
 		try {
 			response = callRequest(request, jo);
 		} catch (Exception io) {
-			throw new RuntimeException("Error modificando usuario por rest", io);
+			throw new RuntimeException("Error modificando usuario por REST", io);
 		}
+
+		// Obtener los enlaces del response
+		String selfLink = response.getJSONObject("_links").getJSONObject("self").getString("href");
+		String groupsLink = response.getJSONObject("_links").getJSONObject("groups").getString("href");
+
+		LOG.info("Self Link: {0}", selfLink);
+		LOG.info("Groups Link: {0}", groupsLink);
 
 		String newUid = response.getString("id");
 		LOG.info("response UID: {0}", newUid);
@@ -237,13 +284,26 @@ public class RestUsersConnector
 	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options) {
 		LOG.ok("Entering delete with objectClass: {0}", objectClass.toString());
 		try {
+			// Validar que el ObjectClass sea ACCOUNT para eperson
+			if (!ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
+				throw new ConnectorException("Unsupported object class for delete operation: " + objectClass);
+			}
+
+			// Construir el endpoint para eliminar el eperson
 			String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
+			LOG.info("Deleting eperson with UID {0} at endpoint {1}", uid.getUidValue(), endpoint);
+
 			HttpDelete request = new HttpDelete(endpoint);
 
 			// Llamada centralizada que ya maneja la autenticación
 			callRequest(request);
+			LOG.info("Eperson with UID {0} deleted successfully", uid.getUidValue());
+
+		} catch (UnknownUidException e) {
+			LOG.warn("Eperson with UID {0} not found: {1}", uid.getUidValue(), e.getMessage());
+			throw e;
 		} catch (Exception io) {
-			throw new RuntimeException("Error eliminando usuario por rest", io);
+			throw new RuntimeException("Error eliminando usuario por REST", io);
 		}
 	}
 
