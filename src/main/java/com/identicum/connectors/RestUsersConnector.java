@@ -189,13 +189,15 @@ public class RestUsersConnector
 
 		jo.put("metadata", metadata);
 
-		String endpoint = getConfiguration().getServiceAddress() + "/server/api/eperson/epersons";
+		// Usar el USERS_ENDPOINT para construir el endpoint completo
+		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT;
 
 		HttpPost request = new HttpPost(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
 		try {
+			// Llamar al método callRequest que ya maneja las cabeceras
 			response = callRequest(request, jo);
 		} catch (URISyntaxException e) {
 			throw new RuntimeException(e);
@@ -256,13 +258,15 @@ public class RestUsersConnector
 
 		jo.put("metadata", metadata);
 
-		String endpoint = getConfiguration().getServiceAddress() + "/server/api/eperson/epersons/" + uid.getUidValue();
+		// Usar el USERS_ENDPOINT para construir el endpoint completo
+		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + uid.getUidValue();
 
 		HttpPut request = new HttpPut(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
 		try {
+			// Llamar al método callRequest que ya maneja las cabeceras
 			response = callRequest(request, jo);
 		} catch (Exception io) {
 			throw new RuntimeException("Error modificando usuario por REST", io);
@@ -283,6 +287,7 @@ public class RestUsersConnector
 	@Override
 	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options) {
 		LOG.ok("Entering delete with objectClass: {0}", objectClass.toString());
+
 		try {
 			// Validar que el ObjectClass sea ACCOUNT para eperson
 			if (!ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
@@ -290,7 +295,7 @@ public class RestUsersConnector
 			}
 
 			// Construir el endpoint para eliminar el eperson
-			String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
+			String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + uid.getUidValue();
 			LOG.info("Deleting eperson with UID {0} at endpoint {1}", uid.getUidValue(), endpoint);
 
 			HttpDelete request = new HttpDelete(endpoint);
@@ -306,6 +311,7 @@ public class RestUsersConnector
 			throw new RuntimeException("Error eliminando usuario por REST", io);
 		}
 	}
+
 
 	@Override
 	public Uid addAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
@@ -380,6 +386,10 @@ public class RestUsersConnector
 		request.setHeader("Content-Type", "application/json");
 		request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
 		request.setHeader("X-XSRF-TOKEN", authManager.getCsrfToken());
+		request.setHeader("Cookie", "DSPACE-XSRF-COOKIE=" + authManager.getCsrfToken());
+
+		LOG.ok("Authorization header: {0}", authManager.getTokenName() + " " + authManager.getTokenValue());
+		LOG.ok("X-XSRF-TOKEN header: {0}", authManager.getCsrfToken());
 
 		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
 			LOG.ok("Response status: {0}", response.getCode());
