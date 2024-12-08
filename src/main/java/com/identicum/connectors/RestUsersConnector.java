@@ -376,10 +376,10 @@ public class RestUsersConnector
 	protected JSONObject callRequest(HttpUriRequest request, JSONObject jo) throws URISyntaxException {
 		LOG.ok("Request URI: {0}", request.getUri());
 		LOG.ok("Request body: {0}", jo.toString());
-		request.setHeader("Content-Type", "application/json");
 
-		// Configurar el encabezado de autorización
+		request.setHeader("Content-Type", "application/json");
 		request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
+		request.setHeader("X-XSRF-TOKEN", authManager.getCsrfToken());
 
 		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
 			LOG.ok("Response status: {0}", response.getCode());
@@ -395,6 +395,7 @@ public class RestUsersConnector
 			throw new RuntimeException(e);
 		}
 	}
+
 
 	protected String callRequest(ClassicHttpRequest request) throws IOException, ParseException {
 		LOG.ok("request URI: {0}", request.getRequestUri());

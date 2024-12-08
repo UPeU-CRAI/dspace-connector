@@ -114,6 +114,14 @@ public class AuthManager {
         return tokenValue != null && !tokenValue.isEmpty();
     }
 
+    // método getCsrfToken() en la clase AuthManager para devolver el valor del token CSRF y ser usado públicamente en otras clases
+    public String getCsrfToken() {
+        if (csrfToken == null || csrfToken.isEmpty()) {
+            throw new ConnectorIOException("CSRF token is missing. Authentication might have failed.");
+        }
+        return csrfToken;
+    }
+
     public String getTokenValue() {
         if (!isAuthenticated()) {
             throw new ConnectorIOException("Not authenticated. Token value is missing.");
