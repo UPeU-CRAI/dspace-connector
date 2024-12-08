@@ -53,8 +53,8 @@ public class RestUsersConnector
 	implements CreateOp, UpdateOp, SchemaOp, SearchOp<RestUsersFilter>, DeleteOp, UpdateAttributeValuesOp, TestOp, TestApiOp
 {
 	private static final Log LOG = Log.getLog(RestUsersConnector.class);
-	
-	private static final String USERS_ENDPOINT = "/users";
+
+	private static final String USERS_ENDPOINT = "/server/api/eperson/epersons";
 	private static final String ROLES_ENDPOINT = "/roles";
 
 	public static final String ATTR_FIRST_NAME = "firstName";
@@ -137,20 +137,29 @@ public class RestUsersConnector
 		LOG.ok("Entering create with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
 		JSONObject jo = new JSONObject();
+		JSONObject metadata = new JSONObject();
 
 		for (Attribute attr : attributes) {
 			LOG.ok("Reading attribute {0} with value {1}", attr.getName(), attr.getValue());
-			jo.put(attr.getName(), getStringAttr(attributes, attr.getName()));
+
+			switch (attr.getName()) {
+				case "email":
+					jo.put("email", getStringAttr(attributes, "email"));
+					break;
+				case "eperson.firstname":
+					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, "eperson.firstname")));
+					break;
+				case "eperson.lastname":
+					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, "eperson.lastname")));
+					break;
+				default:
+					break;
+			}
 		}
 
-		String endpoint = getConfiguration().getServiceAddress();
-		if (ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
-			endpoint = endpoint.concat(USERS_ENDPOINT);
-		} else if (ObjectClass.GROUP.is(objectClass.getObjectClassValue())) {
-			endpoint = endpoint.concat(ROLES_ENDPOINT);
-		} else {
-			throw new ConnectorException("Unknown object class " + objectClass);
-		}
+		jo.put("metadata", metadata);
+
+		String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT);
 
 		HttpPost request = new HttpPost(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
@@ -163,29 +172,50 @@ public class RestUsersConnector
 			throw new RuntimeException(e);
 		}
 
-		String newUid = response.get("id").toString();
+		String newUid = response.getString("id");
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
+	}
+
+	private JSONArray createMetadataArray(String value) {
+		JSONArray array = new JSONArray();
+		JSONObject obj = new JSONObject();
+		obj.put("value", value);
+		obj.put("language", JSONObject.NULL);
+		obj.put("authority", JSONObject.NULL);
+		obj.put("confidence", -1);
+		obj.put("place", 0);
+		array.put(obj);
+		return array;
 	}
 
 	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering update with objectClass: {0}", objectClass.toString());
 		JSONObject response = null;
-
 		JSONObject jo = new JSONObject();
+		JSONObject metadata = new JSONObject();
+
 		for (Attribute attribute : attributes) {
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
-			jo.put(attribute.getName(), getStringAttr(attributes, attribute.getName()));
+
+			switch (attribute.getName()) {
+				case "email":
+					jo.put("email", getStringAttr(attributes, "email"));
+					break;
+				case "eperson.firstname":
+					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, "eperson.firstname")));
+					break;
+				case "eperson.lastname":
+					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, "eperson.lastname")));
+					break;
+				default:
+					break;
+			}
 		}
 
-		String endpoint = getConfiguration().getServiceAddress();
-		if (ObjectClass.ACCOUNT.is(objectClass.getObjectClassValue())) {
-			endpoint = endpoint.concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
-		} else if (ObjectClass.GROUP.is(objectClass.getObjectClassValue())) {
-			endpoint = endpoint.concat(ROLES_ENDPOINT) + "/" + uid.getUidValue();
-		} else {
-			throw new ConnectorException("Unknown object class " + objectClass);
-		}
+		jo.put("metadata", metadata);
+
+		String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
 
 		HttpPut request = new HttpPut(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
@@ -198,7 +228,7 @@ public class RestUsersConnector
 			throw new RuntimeException("Error modificando usuario por rest", io);
 		}
 
-		String newUid = response.get("id").toString();
+		String newUid = response.getString("id");
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
@@ -207,7 +237,7 @@ public class RestUsersConnector
 	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options) {
 		LOG.ok("Entering delete with objectClass: {0}", objectClass.toString());
 		try {
-			String endpoint = getConfiguration().getServiceAddress() + USERS_ENDPOINT + "/" + uid.getUidValue();
+			String endpoint = getConfiguration().getServiceAddress().concat(USERS_ENDPOINT) + "/" + uid.getUidValue();
 			HttpDelete request = new HttpDelete(endpoint);
 
 			// Llamada centralizada que ya maneja la autenticación
