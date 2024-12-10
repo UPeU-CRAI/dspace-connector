@@ -189,7 +189,7 @@ public class RestUsersConnector
 
 		jo.put("metadata", metadata);
 
-		// Usar el USERS_ENDPOINT para construir el endpoint completo
+		// Construir el endpoint completo usando USERS_ENDPOINT
 		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT;
 
 		HttpPost request = new HttpPost(endpoint);
@@ -197,10 +197,11 @@ public class RestUsersConnector
 		request.setEntity(entity);
 
 		try {
-			// Llamar al método callRequest que ya maneja las cabeceras
-			response = callRequest(request, jo);
-		} catch (URISyntaxException e) {
-			throw new RuntimeException(e);
+			// Llamar al método callRequest con autenticación
+			String result = callRequest(request, jo, true);
+			response = new JSONObject(result);
+		} catch (IOException | ParseException | URISyntaxException e) {
+			throw new RuntimeException("Error during request execution", e);
 		}
 
 		// Obtener los enlaces del response
@@ -258,7 +259,7 @@ public class RestUsersConnector
 
 		jo.put("metadata", metadata);
 
-		// Usar el USERS_ENDPOINT para construir el endpoint completo
+		// Construir el endpoint completo usando USERS_ENDPOINT y el UID
 		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + uid.getUidValue();
 
 		HttpPut request = new HttpPut(endpoint);
@@ -266,10 +267,11 @@ public class RestUsersConnector
 		request.setEntity(entity);
 
 		try {
-			// Llamar al método callRequest que ya maneja las cabeceras
-			response = callRequest(request, jo);
-		} catch (Exception io) {
-			throw new RuntimeException("Error modificando usuario por REST", io);
+			// Llamar al método callRequest con autenticación
+			String result = callRequest(request, jo, true);
+			response = new JSONObject(result);
+		} catch (IOException | ParseException | URISyntaxException e) {
+			throw new RuntimeException("Error modificando usuario por REST", e);
 		}
 
 		// Obtener los enlaces del response
@@ -300,8 +302,9 @@ public class RestUsersConnector
 
 			HttpDelete request = new HttpDelete(endpoint);
 
-			// Llamada centralizada que ya maneja la autenticación
-			callRequest(request);
+			// Llamar al método callRequest sin cuerpo (null para el JSONObject) y con autenticación
+			callRequest(request, null, true);
+
 			LOG.info("Eperson with UID {0} deleted successfully", uid.getUidValue());
 
 		} catch (UnknownUidException e) {
@@ -312,13 +315,13 @@ public class RestUsersConnector
 		}
 	}
 
-
 	@Override
 	public Uid addAttributeValues(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering addValue with objectClass: {0}", objectClass.toString());
 		try {
 			for (Attribute attribute : attributes) {
 				LOG.info("AddAttributeValue - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
+
 				if (attribute.getName().equals("roles")) {
 					List<Object> addedRoles = attribute.getValue();
 
@@ -327,23 +330,25 @@ public class RestUsersConnector
 						json.put("id", role.toString());
 
 						String endpoint = String.format("%s/%s/%s/%s",
-								getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT);
+								getConfiguration().getServiceAddress().replaceAll("/$", ""),
+								USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT);
+
 						LOG.info("Adding role {0} for user {1} on endpoint {2}", role.toString(), uid.getUidValue(), endpoint);
 
-						// Crear la solicitud HttpPost directamente
+						// Crear la solicitud HttpPost
 						HttpPost request = new HttpPost(endpoint);
 
 						// Convertir el JSONObject a un StringEntity y agregarlo a la solicitud
 						StringEntity entity = new StringEntity(json.toString(), ContentType.APPLICATION_JSON);
 						request.setEntity(entity);
 
-						// Ejecutar la solicitud con el método `callRequest`
-						callRequest(request, json); // `callRequest` ya maneja la autenticación.
+						// Ejecutar la solicitud con `callRequest` pasando `true` para `withAuth`
+						callRequest(request, json, true);
 					}
 				}
 			}
 		} catch (Exception io) {
-			throw new RuntimeException("Error modificando usuario por rest", io);
+			throw new RuntimeException("Error modificando usuario por REST", io);
 		}
 		return uid;
 	}
@@ -354,22 +359,27 @@ public class RestUsersConnector
 		try {
 			for (Attribute attribute : attributes) {
 				LOG.info("RemoveAttributeValue - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
+
 				if (attribute.getName().equals("roles")) {
 					List<Object> revokedRoles = attribute.getValue();
+
 					for (Object role : revokedRoles) {
 						String endpoint = String.format("%s/%s/%s/%s/%s",
-								getConfiguration().getServiceAddress(), USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT, role.toString());
+								getConfiguration().getServiceAddress().replaceAll("/$", ""),
+								USERS_ENDPOINT, uid.getUidValue(), ROLES_ENDPOINT, role.toString());
+
 						LOG.info("Revoking role {0} for user {1} on endpoint {2}", role.toString(), uid.getUidValue(), endpoint);
 
+						// Crear la solicitud HttpDelete
 						HttpDelete request = new HttpDelete(endpoint);
 
-						// Ejecutar la solicitud con el método `callRequest`
-						callRequest(request); // `callRequest` ya maneja la autenticación.
+						// Ejecutar la solicitud con `callRequest` pasando `true` para `withAuth`
+						callRequest(request, null, true);
 					}
 				}
 			}
 		} catch (Exception io) {
-			throw new RuntimeException("Error modificando usuario por rest", io);
+			throw new RuntimeException("Error modificando usuario por REST", io);
 		}
 		return uid;
 	}
@@ -379,17 +389,25 @@ public class RestUsersConnector
 	// Bloque de Manejo de Solicitudes HTTP
 	// ==============================
 
-	protected JSONObject callRequest(HttpUriRequest request, JSONObject jo) throws URISyntaxException {
+	protected String callRequest(HttpUriRequest request, JSONObject jo, boolean withAuth) throws IOException, ParseException, URISyntaxException {
 		LOG.ok("Request URI: {0}", request.getUri());
-		LOG.ok("Request body: {0}", jo.toString());
 
+		if (jo != null) {
+			LOG.ok("Request body: {0}", jo.toString());
+		}
+
+		// Configurar encabezado Content-Type
 		request.setHeader("Content-Type", "application/json");
-		request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
-		request.setHeader("X-XSRF-TOKEN", authManager.getCsrfToken());
-		request.setHeader("Cookie", "DSPACE-XSRF-COOKIE=" + authManager.getCsrfToken());
 
-		LOG.ok("Authorization header: {0}", authManager.getTokenName() + " " + authManager.getTokenValue());
-		LOG.ok("X-XSRF-TOKEN header: {0}", authManager.getCsrfToken());
+		// Configurar encabezados de autenticación si se requiere
+		if (withAuth) {
+			request.setHeader("Authorization", authManager.getTokenName() + " " + authManager.getTokenValue());
+			request.setHeader("X-XSRF-TOKEN", authManager.getCsrfToken());
+			request.setHeader("Cookie", "DSPACE-XSRF-COOKIE=" + authManager.getCsrfToken());
+
+			LOG.ok("Authorization header: {0}", authManager.getTokenName() + " " + authManager.getTokenValue());
+			LOG.ok("X-XSRF-TOKEN header: {0}", authManager.getCsrfToken());
+		}
 
 		try (ClassicHttpResponse response = (ClassicHttpResponse) execute(request)) {
 			LOG.ok("Response status: {0}", response.getCode());
@@ -398,7 +416,7 @@ public class RestUsersConnector
 			String result = EntityUtils.toString(response.getEntity());
 			LOG.ok("Response body: {0}", result);
 
-			return new JSONObject(result);
+			return result;
 		} catch (IOException e) {
 			throw new ConnectorException("Error reading API response.", e);
 		} catch (ParseException e) {
@@ -406,24 +424,6 @@ public class RestUsersConnector
 		}
 	}
 
-
-	protected String callRequest(ClassicHttpRequest request) throws IOException, ParseException {
-		LOG.ok("request URI: {0}", request.getRequestUri());
-		request.setHeader("Content-Type", "application/json");
-
-		// authHeader(request);
-
-		CloseableHttpResponse response = execute((HttpUriRequest) request);
-		LOG.ok("response: {0}", response);
-
-		super.processResponseErrors(response);
-		// processDrupalResponseErrors(response);
-
-		String result = EntityUtils.toString(response.getEntity());
-		LOG.ok("response body: {0}", result);
-		closeResponse(response);
-		return result;
-	}
 	
 	public void processResponseErrors(CloseableHttpResponse response) {
 		int statusCode = response.getCode();
@@ -479,92 +479,97 @@ public class RestUsersConnector
 	}
 
 	@Override
-	public void executeQuery(ObjectClass objectClass, RestUsersFilter query, ResultsHandler handler, OperationOptions options)
-	{
-		try
-		{
+	public void executeQuery(ObjectClass objectClass, RestUsersFilter query, ResultsHandler handler, OperationOptions options) {
+		try {
 			LOG.info("executeQuery on {0}, query: {1}, options: {2}", objectClass, query, options);
-			if (objectClass.is(ObjectClass.ACCOUNT_NAME)) 
-			{
-				// find by Uid (user Primary Key)
-				if (query != null && query.byUid != null)
-				{
-					HttpGet request = new HttpGet(getConfiguration().getServiceAddress() + USERS_ENDPOINT + "/" + query.byUid);
-					JSONObject response = new JSONObject(callRequest(request));
-					
-					// Json --> midPoint (connectorObject)
+
+			if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
+				// Buscar por Uid (Primary Key del usuario)
+				if (query != null && query.byUid != null) {
+					String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + "/" + query.byUid;
+					HttpGet request = new HttpGet(endpoint);
+
+					// Llamar a callRequest con `true` para `withAuth`
+					JSONObject response = new JSONObject(callRequest(request, null, true));
+
+					// Convertir la respuesta JSON a ConnectorObject
 					ConnectorObject connectorObject = convertUserToConnectorObject(response);
 					LOG.info("Calling handler.handle on single object of AccountObjectClass");
 					handler.handle(connectorObject);
 					LOG.info("Called handler.handle on single object of AccountObjectClass");
-				} 
-				else
-				{
-					String filters = new String();
-					if(query != null && StringUtil.isNotBlank(query.byUsername))
-					{
+
+				} else {
+					// Aplicar filtros para la búsqueda de múltiples usuarios
+					String filters = "";
+					if (query != null && StringUtil.isNotBlank(query.byUsername)) {
 						filters = "?username=" + query.byUsername;
 					}
-					// http://xxx/users?username=nro
-					HttpGet request = new HttpGet(getConfiguration().getServiceAddress() + USERS_ENDPOINT + filters);
+
+					String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + filters;
+					HttpGet request = new HttpGet(endpoint);
+
 					LOG.info("Calling handleUsers for multiple objects of AccountObjectClass");
 					handleUsers(request, handler, options, false);
 					LOG.info("Called handleUsers for multiple objects of AccountObjectClass");
 				}
-			}
-			else if (objectClass.is(ObjectClass.GROUP_NAME))
-			{
-				// find by Uid (user Primary Key)
-				if (query != null && query.byUid != null)
-				{
-					HttpGet request = new HttpGet(getConfiguration().getServiceAddress() + ROLES_ENDPOINT + "/" + query.byUid);
-					JSONObject response = new JSONObject(callRequest(request));
-					
-					// Json --> midPoint (connectorObject)
+
+			} else if (objectClass.is(ObjectClass.GROUP_NAME)) {
+				// Buscar por Uid (Primary Key del grupo)
+				if (query != null && query.byUid != null) {
+					String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + ROLES_ENDPOINT + "/" + query.byUid;
+					HttpGet request = new HttpGet(endpoint);
+
+					// Llamar a callRequest con `true` para `withAuth`
+					JSONObject response = new JSONObject(callRequest(request, null, true));
+
+					// Convertir la respuesta JSON a ConnectorObject
 					ConnectorObject connectorObject = convertRoleToConnectorObject(response);
 					LOG.info("Calling handler.handle on single object of GroupObjectClass");
 					handler.handle(connectorObject);
 					LOG.info("Called handler.handle on single object of GroupObjectClass");
-				} 
-				else
-				{
-					String filters = new String();
-					if(query != null && StringUtil.isNotBlank(query.byName))
-					{
+
+				} else {
+					// Aplicar filtros para la búsqueda de múltiples roles
+					String filters = "";
+					if (query != null && StringUtil.isNotBlank(query.byName)) {
 						filters = "?name=" + query.byName;
 					}
-					HttpGet request = new HttpGet(getConfiguration().getServiceAddress() + ROLES_ENDPOINT + filters);
+
+					String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + ROLES_ENDPOINT + filters;
+					HttpGet request = new HttpGet(endpoint);
+
 					LOG.info("Calling handleRoles for multiple objects of GroupObjectClass");
 					handleRoles(request, handler, options, false);
 					LOG.info("Called handleRoles for multiple objects of GroupObjectClass");
 				}
 			}
-		}
-		catch (IOException | ParseException e)
-		{
-			LOG.error("Error quering objects on Rest Resource", e);
+
+		} catch (IOException | ParseException | URISyntaxException e) {
+			LOG.error("Error querying objects on Rest Resource", e);
 			throw new RuntimeException(e.getMessage(), e);
 		}
 	}
-	
-	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException {
-        JSONArray users = new JSONArray(callRequest(request));
-        LOG.ok("Number of users: {0}", users.length());
 
-        for (int i = 0; i < users.length(); i++) 
-        {
-			// only basic fields
+	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
+		// Llamar a `callRequest` con `null` para el `JSONObject` y `true` para `withAuth`
+		JSONArray users = new JSONArray(callRequest(request, null, true));
+		LOG.ok("Number of users: {0}", users.length());
+
+		for (int i = 0; i < users.length(); i++) {
+			// Solo campos básicos
 			JSONObject user = users.getJSONObject(i);
 			ConnectorObject connectorObject = convertUserToConnectorObject(user);
+
 			LOG.info("Calling handler.handle inside loop. Iteration #{0}", String.valueOf(i));
 			boolean finish = !handler.handle(connectorObject);
 			LOG.info("Called handler.handle inside loop. Iteration #{0}", String.valueOf(i));
+
 			if (finish) {
-			    return true;
+				return true;
 			}
-        }
-        return false;
-    }
+		}
+		return false;
+	}
 
 	private ConnectorObject convertUserToConnectorObject(JSONObject user) throws IOException
 	{
@@ -580,23 +585,27 @@ public class RestUsersConnector
 		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get("id").toString(), connectorObject);
 		return connectorObject;
 	}
-	
-	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException {
-        JSONArray users = new JSONArray(callRequest(request));
-        LOG.ok("Number of roles: {0}", users.length());
 
-        for (int i = 0; i < users.length(); i++) 
-        {
-			// only basic fields
-			JSONObject user = users.getJSONObject(i);
-			ConnectorObject connectorObject = convertRoleToConnectorObject(user);
+	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
+		// Llamar a `callRequest` con `null` para el `JSONObject` y `true` para `withAuth`
+		JSONArray roles = new JSONArray(callRequest(request, null, true));
+		LOG.ok("Number of roles: {0}", roles.length());
+
+		for (int i = 0; i < roles.length(); i++) {
+			// Solo campos básicos
+			JSONObject role = roles.getJSONObject(i);
+			ConnectorObject connectorObject = convertRoleToConnectorObject(role);
+
+			LOG.info("Calling handler.handle inside loop. Iteration #{0}", String.valueOf(i));
 			boolean finish = !handler.handle(connectorObject);
+			LOG.info("Called handler.handle inside loop. Iteration #{0}", String.valueOf(i));
+
 			if (finish) {
-			    return true;
+				return true;
 			}
-        }
-        return false;
-    }
+		}
+		return false;
+	}
 	
 	private ConnectorObject convertRoleToConnectorObject(JSONObject role) throws IOException
 	{
