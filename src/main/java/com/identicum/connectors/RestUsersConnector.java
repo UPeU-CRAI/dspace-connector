@@ -589,47 +589,50 @@ public class RestUsersConnector
 	private ConnectorObject convertUserToConnectorObject(JSONObject user) throws IOException {
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
 
-		// Manejar el UID con verificación
+		// Asignar UID con verificación
 		if (user.has("id") && !user.isNull("id")) {
 			builder.setUid(new Uid(user.getString("id")));
 		} else {
 			LOG.warn("User object does not contain 'id'. Skipping UID assignment.");
 		}
 
-		// Asignar el 'name' utilizando distintas estrategias
-		if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
-			builder.setName(user.getString(ATTR_USERNAME));
-		} else if (user.has("name") && !user.isNull("name")) {
-			// Si ATTR_USERNAME no está disponible, usar el campo 'name'
+		// Asignar el nombre de usuario con verificación
+		if (user.has("name") && !user.isNull("name")) {
 			builder.setName(user.getString("name"));
+		} else if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
+			builder.setName(user.getString(ATTR_USERNAME));
 		} else if (user.has("email") && !user.isNull("email")) {
-			// Si 'name' no está disponible, usar 'email' como alternativa
+			// Como alternativa, usar el email si no hay 'name' o 'username'
 			builder.setName(user.getString("email"));
 		} else {
-			// Asignar un nombre por defecto si todos los anteriores fallan
-			LOG.warn("User object does not contain '{0}', 'name', or 'email'. Assigning default name.", ATTR_USERNAME);
+			LOG.warn("User object does not contain 'name', '{0}' or 'email'. Assigning default name.", ATTR_USERNAME);
 			builder.setName("unknown-user");
 		}
 
 		// Agregar atributos adicionales con verificación de existencia
-		addAttrIfExists(builder, ATTR_EMAIL, user);
-		addAttrIfExists(builder, ATTR_FIRST_NAME, user);
-		addAttrIfExists(builder, ATTR_LAST_NAME, user);
+		addAttrIfExists(builder, ATTR_EMAIL, user, "email");
+		addAttrIfExists(builder, ATTR_FIRST_NAME, user, "eperson.firstname");
+		addAttrIfExists(builder, ATTR_LAST_NAME, user, "eperson.lastname");
 
 		ConnectorObject connectorObject = builder.build();
 		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.optString("id", "unknown"), connectorObject);
 		return connectorObject;
 	}
+
 	/**
-	 * Método auxiliar para agregar atributos solo si existen y no son nulos.
+	 * Método auxiliar para agregar atributos si existen en el objeto JSON.
 	 */
-	private void addAttrIfExists(ConnectorObjectBuilder builder, String attrKey, JSONObject user) {
-		if (user.has(attrKey) && !user.isNull(attrKey)) {
-			addAttr(builder, attrKey, user.getString(attrKey));
+	private void addAttrIfExists(ConnectorObjectBuilder builder, String attrName, JSONObject user, String jsonKey) {
+		if (user.has("metadata") && user.getJSONObject("metadata").has(jsonKey)) {
+			String value = user.getJSONObject("metadata").getJSONArray(jsonKey).getJSONObject(0).optString("value", null);
+			if (value != null && !value.isEmpty()) {
+				builder.addAttribute(attrName, value);
+			}
 		} else {
-			LOG.warn("User object does not contain '{0}'. Skipping attribute assignment.", attrKey);
+			LOG.warn("User object does not contain metadata for '{0}'. Skipping attribute assignment.", jsonKey);
 		}
 	}
+
 
 
 
