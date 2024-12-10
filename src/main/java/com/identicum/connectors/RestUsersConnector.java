@@ -552,29 +552,27 @@ public class RestUsersConnector
 	}
 
 	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
-		// Llamar a `callRequest` con `null` para el `JSONObject` y `true` para `withAuth`
-		String responseString = callRequest(request, null, true);
-		JSONArray users;
+		// Llamar a `callRequest` para obtener el JSON de respuesta
+		JSONObject response = new JSONObject(callRequest(request, null, true));
 
-		try {
-			// Verificar si la respuesta es un JSONArray o un JSONObject
-			if (responseString.startsWith("[")) {
-				users = new JSONArray(responseString);
-			} else {
-				JSONObject user = new JSONObject(responseString);
-				users = new JSONArray();
-				users.put(user); // Agregar el JSONObject a un JSONArray para procesarlo como lista
-			}
-		} catch (JSONException e) {
-			LOG.error("Error parsing JSON response", e);
-			throw new ConnectorException("Error parsing JSON response", e);
+		// Extraer el array de epersons desde la clave "_embedded"
+		if (!response.has("_embedded") || !response.getJSONObject("_embedded").has("epersons")) {
+			LOG.warn("No 'epersons' found in the response.");
+			return false;
 		}
 
+		JSONArray users = response.getJSONObject("_embedded").getJSONArray("epersons");
 		LOG.ok("Number of users: {0}", users.length());
 
 		for (int i = 0; i < users.length(); i++) {
-			// Solo campos básicos
 			JSONObject user = users.getJSONObject(i);
+
+			// Verificar si el objeto tiene una clave "id"
+			if (!user.has("id")) {
+				LOG.warn("User object at index {0} does not contain 'id' field. Skipping.", i);
+				continue;
+			}
+
 			ConnectorObject connectorObject = convertUserToConnectorObject(user);
 
 			LOG.info("Calling handler.handle inside loop. Iteration #{0}", String.valueOf(i));
@@ -588,21 +586,44 @@ public class RestUsersConnector
 		return false;
 	}
 
-
-	private ConnectorObject convertUserToConnectorObject(JSONObject user) throws IOException
-	{
+	private ConnectorObject convertUserToConnectorObject(JSONObject user) throws IOException {
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
-		builder.setUid(new Uid(user.get("id").toString()));
-		builder.setName(user.getString(ATTR_USERNAME));
-		
-		addAttr(builder, ATTR_EMAIL, user.getString(ATTR_EMAIL));
-		addAttr(builder, ATTR_FIRST_NAME, user.getString(ATTR_FIRST_NAME));
-		addAttr(builder, ATTR_LAST_NAME, user.getString(ATTR_LAST_NAME));
+
+		// Manejar el UID con verificación
+		if (user.has("id") && !user.isNull("id")) {
+			builder.setUid(new Uid(user.getString("id")));
+		} else {
+			LOG.warn("User object does not contain 'id'. Skipping UID assignment.");
+		}
+
+		// Manejar el nombre de usuario con verificación
+		if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
+			builder.setName(user.getString(ATTR_USERNAME));
+		} else {
+			LOG.warn("User object does not contain '{0}'. Skipping name assignment.", ATTR_USERNAME);
+		}
+
+		// Agregar atributos adicionales con verificación de existencia
+		addAttrIfExists(builder, ATTR_EMAIL, user);
+		addAttrIfExists(builder, ATTR_FIRST_NAME, user);
+		addAttrIfExists(builder, ATTR_LAST_NAME, user);
 
 		ConnectorObject connectorObject = builder.build();
-		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get("id").toString(), connectorObject);
+		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.optString("id", "unknown"), connectorObject);
 		return connectorObject;
 	}
+
+	/**
+	 * Método auxiliar para agregar atributos solo si existen y no son nulos.
+	 */
+	private void addAttrIfExists(ConnectorObjectBuilder builder, String attrKey, JSONObject user) {
+		if (user.has(attrKey) && !user.isNull(attrKey)) {
+			addAttr(builder, attrKey, user.getString(attrKey));
+		} else {
+			LOG.warn("User object does not contain '{0}'. Skipping attribute assignment.", attrKey);
+		}
+	}
+
 
 	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
 		// Llamar a `callRequest` con `null` para el `JSONObject` y `true` para `withAuth`
