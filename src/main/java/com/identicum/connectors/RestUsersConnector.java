@@ -599,26 +599,22 @@ public class RestUsersConnector
 		// Asignar el nombre de usuario con verificación
 		if (user.has("name") && !user.isNull("name")) {
 			builder.setName(user.getString("name"));
-		} else if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
-			builder.setName(user.getString(ATTR_USERNAME));
 		} else if (user.has("email") && !user.isNull("email")) {
 			builder.setName(user.getString("email"));
 		} else {
-			LOG.warn("User object does not contain 'name', '{0}' or 'email'. Assigning default name.", ATTR_USERNAME);
+			LOG.warn("User object does not contain 'name' or 'email'. Assigning default name.");
 			builder.setName("unknown-user");
 		}
 
-		// Agregar atributos adicionales con verificación de existencia
-		addAttrIfExists(builder, ATTR_EMAIL, user, "email");
-		addAttrIfExists(builder, ATTR_FIRST_NAME, user, "eperson.firstname");
-		addAttrIfExists(builder, ATTR_LAST_NAME, user, "eperson.lastname");
-		addAttrIfExists(builder, "language", user, "eperson.language");
-		addAttrIfExists(builder, "alert.embargo", user, "eperson.alert.embargo");
-		addAttrIfExists(builder, "license.accepted", user, "eperson.license.accepted");
-		addAttrIfExists(builder, "license.accepteddate", user, "eperson.license.accepteddate");
-		addAttrIfExists(builder, "orcid", user, "eperson.orcid");
-		addAttrIfExists(builder, "orcid.scope", user, "eperson.orcid.scope");
-		addAttrIfExists(builder, "phone", user, "eperson.phone");
+		// Agregar atributos adicionales desde metadata
+		addMetadataAttrIfExists(builder, ATTR_FIRST_NAME, user, "eperson.firstname");
+		addMetadataAttrIfExists(builder, ATTR_LAST_NAME, user, "eperson.lastname");
+		addMetadataAttrIfExists(builder, "language", user, "eperson.language");
+
+		// Agregar atributos adicionales desde nivel principal
+		addSimpleAttrIfExists(builder, ATTR_EMAIL, user, "email");
+		addSimpleAttrIfExists(builder, "netid", user, "netid");
+		addSimpleAttrIfExists(builder, "lastActive", user, "lastActive");
 
 		ConnectorObject connectorObject = builder.build();
 		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.optString("id", "unknown"), connectorObject);
@@ -626,9 +622,9 @@ public class RestUsersConnector
 	}
 
 	/**
-	 * Método auxiliar para agregar atributos si existen en el objeto JSON.
+	 * Método auxiliar para agregar atributos desde metadata si existen en el objeto JSON.
 	 */
-	private void addAttrIfExists(ConnectorObjectBuilder builder, String attrName, JSONObject user, String jsonKey) {
+	private void addMetadataAttrIfExists(ConnectorObjectBuilder builder, String attrName, JSONObject user, String jsonKey) {
 		if (user.has("metadata") && user.getJSONObject("metadata").has(jsonKey)) {
 			String value = user.getJSONObject("metadata").getJSONArray(jsonKey).getJSONObject(0).optString("value", null);
 			if (value != null && !value.isEmpty()) {
@@ -636,6 +632,20 @@ public class RestUsersConnector
 			}
 		} else {
 			LOG.warn("User object does not contain metadata for '{0}'. Skipping attribute assignment.", jsonKey);
+		}
+	}
+
+	/**
+	 * Método auxiliar para agregar atributos desde el nivel principal del objeto JSON.
+	 */
+	private void addSimpleAttrIfExists(ConnectorObjectBuilder builder, String attrName, JSONObject user, String jsonKey) {
+		if (user.has(jsonKey) && !user.isNull(jsonKey)) {
+			String value = user.optString(jsonKey, null);
+			if (value != null && !value.isEmpty()) {
+				builder.addAttribute(attrName, value);
+			}
+		} else {
+			LOG.warn("User object does not contain '{0}'. Skipping attribute assignment.", jsonKey);
 		}
 	}
 
