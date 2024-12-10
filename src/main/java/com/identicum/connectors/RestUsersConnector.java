@@ -42,6 +42,7 @@ import org.identityconnectors.framework.spi.operations.TestOp;
 import org.identityconnectors.framework.spi.operations.UpdateAttributeValuesOp;
 import org.identityconnectors.framework.spi.operations.UpdateOp;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.evolveum.polygon.rest.AbstractRestConnector;
@@ -552,7 +553,23 @@ public class RestUsersConnector
 
 	private boolean handleUsers(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
 		// Llamar a `callRequest` con `null` para el `JSONObject` y `true` para `withAuth`
-		JSONArray users = new JSONArray(callRequest(request, null, true));
+		String responseString = callRequest(request, null, true);
+		JSONArray users;
+
+		try {
+			// Verificar si la respuesta es un JSONArray o un JSONObject
+			if (responseString.startsWith("[")) {
+				users = new JSONArray(responseString);
+			} else {
+				JSONObject user = new JSONObject(responseString);
+				users = new JSONArray();
+				users.put(user); // Agregar el JSONObject a un JSONArray para procesarlo como lista
+			}
+		} catch (JSONException e) {
+			LOG.error("Error parsing JSON response", e);
+			throw new ConnectorException("Error parsing JSON response", e);
+		}
+
 		LOG.ok("Number of users: {0}", users.length());
 
 		for (int i = 0; i < users.length(); i++) {
@@ -570,6 +587,7 @@ public class RestUsersConnector
 		}
 		return false;
 	}
+
 
 	private ConnectorObject convertUserToConnectorObject(JSONObject user) throws IOException
 	{
