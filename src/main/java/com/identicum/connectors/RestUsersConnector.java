@@ -602,7 +602,6 @@ public class RestUsersConnector
 		} else if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
 			builder.setName(user.getString(ATTR_USERNAME));
 		} else if (user.has("email") && !user.isNull("email")) {
-			// Como alternativa, usar el email si no hay 'name' o 'username'
 			builder.setName(user.getString("email"));
 		} else {
 			LOG.warn("User object does not contain 'name', '{0}' or 'email'. Assigning default name.", ATTR_USERNAME);
@@ -614,8 +613,12 @@ public class RestUsersConnector
 		addAttrIfExists(builder, ATTR_FIRST_NAME, user, "eperson.firstname");
 		addAttrIfExists(builder, ATTR_LAST_NAME, user, "eperson.lastname");
 		addAttrIfExists(builder, "language", user, "eperson.language");
-		addAttrIfExists(builder, "netid", user, "netid");
-		addAttrIfExists(builder, "lastActive", user, "lastActive");
+		addAttrIfExists(builder, "alert.embargo", user, "eperson.alert.embargo");
+		addAttrIfExists(builder, "license.accepted", user, "eperson.license.accepted");
+		addAttrIfExists(builder, "license.accepteddate", user, "eperson.license.accepteddate");
+		addAttrIfExists(builder, "orcid", user, "eperson.orcid");
+		addAttrIfExists(builder, "orcid.scope", user, "eperson.orcid.scope");
+		addAttrIfExists(builder, "phone", user, "eperson.phone");
 
 		ConnectorObject connectorObject = builder.build();
 		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.optString("id", "unknown"), connectorObject);
@@ -635,6 +638,7 @@ public class RestUsersConnector
 			LOG.warn("User object does not contain metadata for '{0}'. Skipping attribute assignment.", jsonKey);
 		}
 	}
+
 
 
 
