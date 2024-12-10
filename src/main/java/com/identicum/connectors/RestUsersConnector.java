@@ -596,11 +596,19 @@ public class RestUsersConnector
 			LOG.warn("User object does not contain 'id'. Skipping UID assignment.");
 		}
 
-		// Manejar el nombre de usuario con verificación
+		// Asignar el 'name' utilizando distintas estrategias
 		if (user.has(ATTR_USERNAME) && !user.isNull(ATTR_USERNAME)) {
 			builder.setName(user.getString(ATTR_USERNAME));
+		} else if (user.has("name") && !user.isNull("name")) {
+			// Si ATTR_USERNAME no está disponible, usar el campo 'name'
+			builder.setName(user.getString("name"));
+		} else if (user.has("email") && !user.isNull("email")) {
+			// Si 'name' no está disponible, usar 'email' como alternativa
+			builder.setName(user.getString("email"));
 		} else {
-			LOG.warn("User object does not contain '{0}'. Skipping name assignment.", ATTR_USERNAME);
+			// Asignar un nombre por defecto si todos los anteriores fallan
+			LOG.warn("User object does not contain '{0}', 'name', or 'email'. Assigning default name.", ATTR_USERNAME);
+			builder.setName("unknown-user");
 		}
 
 		// Agregar atributos adicionales con verificación de existencia
@@ -612,7 +620,6 @@ public class RestUsersConnector
 		LOG.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.optString("id", "unknown"), connectorObject);
 		return connectorObject;
 	}
-
 	/**
 	 * Método auxiliar para agregar atributos solo si existen y no son nulos.
 	 */
@@ -623,6 +630,7 @@ public class RestUsersConnector
 			LOG.warn("User object does not contain '{0}'. Skipping attribute assignment.", attrKey);
 		}
 	}
+
 
 
 	private boolean handleRoles(HttpGet request, ResultsHandler handler, OperationOptions options, boolean findAll) throws IOException, ParseException, URISyntaxException {
