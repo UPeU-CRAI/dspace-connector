@@ -86,21 +86,61 @@ public class RestUsersConnector
 	}
 
 
-	public Schema schema()
-	{
+	public Schema schema() {
 		LOG.ok("Reading schema");
 		SchemaBuilder schemaBuilder = new SchemaBuilder(RestUsersConnector.class);
 		ObjectClassInfoBuilder accountBuilder = new ObjectClassInfoBuilder();
 		accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
 
-		AttributeInfoBuilder attrUsername = new AttributeInfoBuilder(ATTR_USERNAME);
-		attrUsername.setRequired(true);
-		accountBuilder.addAttributeInfo(attrUsername.build());
+		// Atributo id (obligatorio)
+		AttributeInfoBuilder attrId = new AttributeInfoBuilder("id");
+		attrId.setRequired(true);
+		accountBuilder.addAttributeInfo(attrId.build());
 
+		// Atributo uuid (opcional)
+		AttributeInfoBuilder attrUuid = new AttributeInfoBuilder("uuid");
+		attrUuid.setRequired(false);
+		accountBuilder.addAttributeInfo(attrUuid.build());
+
+		// Atributo name (obligatorio)
+		AttributeInfoBuilder attrName = new AttributeInfoBuilder("name");
+		attrName.setRequired(true);
+		accountBuilder.addAttributeInfo(attrName.build());
+
+		// Atributo email (opcional)
 		AttributeInfoBuilder attrEmail = new AttributeInfoBuilder(ATTR_EMAIL);
 		attrEmail.setRequired(false);
 		accountBuilder.addAttributeInfo(attrEmail.build());
 
+		// Atributo netid (opcional)
+		AttributeInfoBuilder attrNetid = new AttributeInfoBuilder("netid");
+		attrNetid.setRequired(false);
+		accountBuilder.addAttributeInfo(attrNetid.build());
+
+		// Atributo lastActive (opcional)
+		AttributeInfoBuilder attrLastActive = new AttributeInfoBuilder("lastActive");
+		attrLastActive.setRequired(false);
+		accountBuilder.addAttributeInfo(attrLastActive.build());
+
+		// Atributo canLogIn (opcional)
+		AttributeInfoBuilder attrCanLogIn = new AttributeInfoBuilder("canLogIn");
+		attrCanLogIn.setRequired(false);
+		attrCanLogIn.setType(boolean.class);
+		accountBuilder.addAttributeInfo(attrCanLogIn.build());
+
+		// Atributo requireCertificate (opcional)
+		AttributeInfoBuilder attrRequireCertificate = new AttributeInfoBuilder("requireCertificate");
+		attrRequireCertificate.setRequired(false);
+		attrRequireCertificate.setType(boolean.class);
+		accountBuilder.addAttributeInfo(attrRequireCertificate.build());
+
+		// Atributo selfRegistered (opcional)
+		AttributeInfoBuilder attrSelfRegistered = new AttributeInfoBuilder("selfRegistered");
+		attrSelfRegistered.setRequired(false);
+		attrSelfRegistered.setType(boolean.class);
+		accountBuilder.addAttributeInfo(attrSelfRegistered.build());
+
+		// Atributos de metadata
 		AttributeInfoBuilder attrFirstName = new AttributeInfoBuilder(ATTR_FIRST_NAME);
 		attrFirstName.setRequired(true);
 		accountBuilder.addAttributeInfo(attrFirstName.build());
@@ -108,27 +148,23 @@ public class RestUsersConnector
 		AttributeInfoBuilder attrLastName = new AttributeInfoBuilder(ATTR_LAST_NAME);
 		attrLastName.setRequired(true);
 		accountBuilder.addAttributeInfo(attrLastName.build());
-		
-		AttributeInfoBuilder attrDummy = new AttributeInfoBuilder("dummy");
-		attrDummy.setRequired(false);
-		accountBuilder.addAttributeInfo(attrDummy.build());
-		
-		AttributeInfoBuilder attrRoles = new AttributeInfoBuilder(ATTR_ROLES);
-		attrRoles.setMultiValued(true);
-		attrRoles.setRequired(false);
-		accountBuilder.addAttributeInfo(attrRoles.build());
 
+		AttributeInfoBuilder attrLanguage = new AttributeInfoBuilder("language");
+		attrLanguage.setRequired(false);
+		accountBuilder.addAttributeInfo(attrLanguage.build());
+
+		// Definir el esquema para la clase de cuenta
 		schemaBuilder.defineObjectClass(accountBuilder.build());
-		
+
+		// Definir el esquema para la clase de grupo
 		ObjectClassInfoBuilder groupBuilder = new ObjectClassInfoBuilder();
 		groupBuilder.setType(ObjectClass.GROUP_NAME);
-		
 		schemaBuilder.defineObjectClass(groupBuilder.build());
-
 
 		LOG.ok("Exiting schema");
 		return schemaBuilder.build();
 	}
+
 
 	// ==============================
 	// Bloque de Operaciones CRUD
