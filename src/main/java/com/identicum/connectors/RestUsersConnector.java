@@ -93,19 +93,19 @@ public class RestUsersConnector
 		accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
 
 		// Atributo id (obligatorio)
-		AttributeInfoBuilder attrId = new AttributeInfoBuilder("id");
-		attrId.setRequired(true);
-		accountBuilder.addAttributeInfo(attrId.build());
+		//AttributeInfoBuilder attrId = new AttributeInfoBuilder("id");
+		//attrId.setRequired(true);
+		//accountBuilder.addAttributeInfo(attrId.build());
 
 		// Atributo uuid (opcional)
-		AttributeInfoBuilder attrUuid = new AttributeInfoBuilder("uuid");
-		attrUuid.setRequired(false);
-		accountBuilder.addAttributeInfo(attrUuid.build());
+		//AttributeInfoBuilder attrUuid = new AttributeInfoBuilder("uuid");
+		//attrUuid.setRequired(false);
+		//accountBuilder.addAttributeInfo(attrUuid.build());
 
 		// Atributo name (obligatorio)
-		AttributeInfoBuilder attrName = new AttributeInfoBuilder("name");
-		attrName.setRequired(true);
-		accountBuilder.addAttributeInfo(attrName.build());
+		//AttributeInfoBuilder attrName = new AttributeInfoBuilder("name");
+		//attrName.setRequired(true);
+		//accountBuilder.addAttributeInfo(attrName.build());
 
 		// Atributo email (opcional)
 		AttributeInfoBuilder attrEmail = new AttributeInfoBuilder(ATTR_EMAIL);
