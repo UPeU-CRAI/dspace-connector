@@ -240,9 +240,8 @@ public class RestUsersConnector
 
 	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering update with objectClass: {0}", objectClass.toString());
-		JSONObject response = null;
-		JSONObject jo = new JSONObject();
-		JSONObject metadata = new JSONObject();
+
+		JSONArray patchArray = new JSONArray();
 
 		for (Attribute attribute : attributes) {
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
@@ -250,63 +249,66 @@ public class RestUsersConnector
 
 			switch (attrName) {
 				case "firstname":
-					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/metadata/eperson.firstname/0/value", getStringAttr(attributes, attrName)));
 					break;
 				case "lastname":
-					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/metadata/eperson.lastname/0/value", getStringAttr(attributes, attrName)));
 					break;
 				case "language":
-					metadata.put("eperson.language", createMetadataArray(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/metadata/eperson.language/0/value", getStringAttr(attributes, attrName)));
 					break;
 				case "email":
-					jo.put("email", getStringAttr(attributes, attrName));
+					patchArray.put(createPatchOperation("replace", "/email", getStringAttr(attributes, attrName)));
 					break;
 				case "netid":
-					jo.put("netid", getStringAttr(attributes, attrName));
+					patchArray.put(createPatchOperation("replace", "/netid", getStringAttr(attributes, attrName)));
 					break;
 				case "canLogIn":
-					jo.put("canLogIn", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/canLogIn", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
 					break;
 				case "requireCertificate":
-					jo.put("requireCertificate", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/requireCertificate", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
 					break;
 				case "selfRegistered":
-					jo.put("selfRegistered", Boolean.parseBoolean(getStringAttr(attributes, attrName)));
+					patchArray.put(createPatchOperation("replace", "/selfRegistered", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
 					break;
 				case "name":
-					jo.put("name", getStringAttr(attributes, attrName));
+					patchArray.put(createPatchOperation("replace", "/name", getStringAttr(attributes, attrName)));
 					break;
 			}
 		}
 
-		jo.put("metadata", metadata);
-
 		// Construir el endpoint completo usando USERS_ENDPOINT y el UID
 		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + "/" + uid.getUidValue();
 
-		HttpPut request = new HttpPut(endpoint);
-		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
+		HttpPatch request = new HttpPatch(endpoint);
+		StringEntity entity = new StringEntity(patchArray.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
 
 		try {
 			// Llamar al método callRequest con autenticación
-			String result = callRequest(request, jo, true);
-			response = new JSONObject(result);
+			String result = callRequest(request, patchArray, true);
+			JSONObject response = new JSONObject(result);
+
+			// Obtener el nuevo UID del response
+			String newUid = response.getString("id");
+			LOG.info("response UID: {0}", newUid);
+
+			return new Uid(newUid);
 		} catch (IOException | ParseException | URISyntaxException e) {
 			throw new RuntimeException("Error modificando usuario por REST", e);
 		}
-
-		// Obtener los enlaces del response
-		String selfLink = response.getJSONObject("_links").getJSONObject("self").getString("href");
-		String groupsLink = response.getJSONObject("_links").getJSONObject("groups").getString("href");
-
-		LOG.info("Self Link: {0}", selfLink);
-		LOG.info("Groups Link: {0}", groupsLink);
-
-		String newUid = response.getString("id");
-		LOG.info("response UID: {0}", newUid);
-		return new Uid(newUid);
 	}
+	// Método Auxiliar createPatchOperation para update
+	// Este método auxiliar construye cada operación PATCH en el formato requerido por JSON Patch:
+	private JSONObject createPatchOperation(String op, String path, Object value) {
+		JSONObject patchOperation = new JSONObject();
+		patchOperation.put("op", op);
+		patchOperation.put("path", path);
+		patchOperation.put("value", value);
+		return patchOperation;
+	}
+
 
 	@Override
 	public void delete(ObjectClass objectClass, Uid uid, OperationOptions options) {
@@ -432,11 +434,15 @@ public class RestUsersConnector
 	// Bloque de Manejo de Solicitudes HTTP
 	// ==============================
 
-	protected String callRequest(HttpUriRequest request, JSONObject jo, boolean withAuth) throws IOException, ParseException, URISyntaxException {
+	protected String callRequest(HttpUriRequest request, Object body, boolean withAuth) throws IOException, ParseException, URISyntaxException {
 		LOG.ok("Request URI: {0}", request.getUri());
 
-		if (jo != null) {
-			LOG.ok("Request body: {0}", jo.toString());
+		if (body != null) {
+			LOG.ok("Request body: {0}", body.toString());
+
+			// Configurar el cuerpo de la solicitud
+			StringEntity entity = new StringEntity(body.toString(), ContentType.APPLICATION_JSON);
+			request.setEntity(entity);
 		}
 
 		// Configurar encabezado Content-Type
