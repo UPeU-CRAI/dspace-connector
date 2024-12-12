@@ -49,9 +49,9 @@ import com.evolveum.polygon.rest.AbstractRestConnector;
 
 
 @ConnectorClass(displayNameKey = "connector.identicum.rest.display", configurationClass = RestUsersConfiguration.class)
-public class RestUsersConnector 
-	extends AbstractRestConnector<RestUsersConfiguration> 
-	implements CreateOp, UpdateOp, SchemaOp, SearchOp<RestUsersFilter>, DeleteOp, UpdateAttributeValuesOp, TestOp, TestApiOp
+public class RestUsersConnector
+		extends AbstractRestConnector<RestUsersConfiguration>
+		implements CreateOp, UpdateOp, SchemaOp, SearchOp<RestUsersFilter>, DeleteOp, UpdateAttributeValuesOp, TestOp, TestApiOp
 {
 	private static final Log LOG = Log.getLog(RestUsersConnector.class);
 
@@ -282,7 +282,7 @@ public class RestUsersConnector
 		jo.put("metadata", metadata);
 
 		// Construir el endpoint completo usando USERS_ENDPOINT y el UID
-		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + uid.getUidValue();
+		String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + "/" + uid.getUidValue();
 
 		HttpPut request = new HttpPut(endpoint);
 		StringEntity entity = new StringEntity(jo.toString(), ContentType.APPLICATION_JSON);
@@ -319,13 +319,28 @@ public class RestUsersConnector
 			}
 
 			// Construir el endpoint para eliminar el eperson
-			String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + uid.getUidValue();
+			String endpoint = getConfiguration().getServiceAddress().replaceAll("/$", "") + USERS_ENDPOINT + "/" + uid.getUidValue();
+
 			LOG.info("Deleting eperson with UID {0} at endpoint {1}", uid.getUidValue(), endpoint);
 
 			HttpDelete request = new HttpDelete(endpoint);
 
-			// Llamar al método callRequest sin cuerpo (null para el JSONObject) y con autenticación
-			callRequest(request, null, true);
+			try {
+				callRequest(request, null, true);
+			} catch (ConnectorException e) {
+				// Si el error es 422, manejar el caso de workflow group
+				if (e.getMessage().contains("Unprocessable Entity")) {
+					LOG.warn("User cannot be deleted because they are the only member of a workflow group. Attempting to clean up workflow group.");
+
+					// Llamar a una función para limpiar el grupo de flujo de trabajo
+					cleanupWorkflowGroup(uid.getUidValue());
+
+					// Intentar eliminar nuevamente el usuario
+					callRequest(request, null, true);
+				} else {
+					throw e;
+				}
+			}
 
 			LOG.info("Eperson with UID {0} deleted successfully", uid.getUidValue());
 
@@ -335,6 +350,12 @@ public class RestUsersConnector
 		} catch (Exception io) {
 			throw new RuntimeException("Error eliminando usuario por REST", io);
 		}
+	}
+
+	// Método para limpiar el grupo de flujo de trabajo
+	private void cleanupWorkflowGroup(String userId) {
+		// Aquí debes implementar la lógica para eliminar tareas y el grupo de flujo de trabajo asociado al usuario
+		LOG.info("Cleaning up workflow group for user ID: {0}", userId);
 	}
 
 	@Override
@@ -435,10 +456,19 @@ public class RestUsersConnector
 			LOG.ok("Response status: {0}", response.getCode());
 			this.processResponseErrors((CloseableHttpResponse) response);
 
-			String result = EntityUtils.toString(response.getEntity());
-			LOG.ok("Response body: {0}", result);
+			if (response.getCode() == 204) {
+				LOG.info("Received 204 No Content response.");
+				return "";
+			}
 
-			return result;
+			if (response.getEntity() != null) {
+				String result = EntityUtils.toString(response.getEntity());
+				LOG.ok("Response body: {0}", result);
+				return result;
+			} else {
+				LOG.warn("Response entity is null. No content returned.");
+				return "";
+			}
 		} catch (IOException e) {
 			throw new ConnectorException("Error reading API response.", e);
 		} catch (ParseException e) {
@@ -446,53 +476,53 @@ public class RestUsersConnector
 		}
 	}
 
-	
+
 	public void processResponseErrors(CloseableHttpResponse response) {
 		int statusCode = response.getCode();
 		if (statusCode >= 200 && statusCode <= 299) {
-            return;
-        }
-        String responseBody = null;
-        try {
-            responseBody = EntityUtils.toString(response.getEntity());
-        } catch (IOException | ParseException e) {
-            LOG.warn("cannot read response body: " + e, e);
-        }
+			return;
+		}
+		String responseBody = null;
+		try {
+			responseBody = EntityUtils.toString(response.getEntity());
+		} catch (IOException | ParseException e) {
+			LOG.warn("cannot read response body: " + e, e);
+		}
 
 		String message = "HTTP error " + statusCode + " " + response.getReasonPhrase() + " : " + responseBody;
-        LOG.error("{0}", message);
-        if (statusCode == 400 || statusCode == 405 || statusCode == 406) {
-            closeResponse(response);
-            throw new ConnectorIOException(message);
-        }
-        if (statusCode == 401 || statusCode == 402 || statusCode == 403 || statusCode == 407) {
-            closeResponse(response);
-            throw new PermissionDeniedException(message);
-        }
-        if (statusCode == 404 || statusCode == 410) {
-            closeResponse(response);
-            throw new UnknownUidException(message);
-        }
-        if (statusCode == 408) {
-            closeResponse(response);
-            throw new OperationTimeoutException(message);
-        }
-        if (statusCode == 409) {
-            closeResponse(response);
-            throw new AlreadyExistsException();
-        }
-        if (statusCode == 412) {
-            closeResponse(response);
-            throw new PreconditionFailedException(message);
-        }
-        if (statusCode == 418) {
-            closeResponse(response);
-            throw new UnsupportedOperationException("Sorry, no cofee: " + message);
-        }
-        // TODO: other codes
-        closeResponse(response);
-        throw new ConnectorException(message);
-    }
+		LOG.error("{0}", message);
+		if (statusCode == 400 || statusCode == 405 || statusCode == 406) {
+			closeResponse(response);
+			throw new ConnectorIOException(message);
+		}
+		if (statusCode == 401 || statusCode == 402 || statusCode == 403 || statusCode == 407) {
+			closeResponse(response);
+			throw new PermissionDeniedException(message);
+		}
+		if (statusCode == 404 || statusCode == 410) {
+			closeResponse(response);
+			throw new UnknownUidException(message);
+		}
+		if (statusCode == 408) {
+			closeResponse(response);
+			throw new OperationTimeoutException(message);
+		}
+		if (statusCode == 409) {
+			closeResponse(response);
+			throw new AlreadyExistsException();
+		}
+		if (statusCode == 412) {
+			closeResponse(response);
+			throw new PreconditionFailedException(message);
+		}
+		if (statusCode == 418) {
+			closeResponse(response);
+			throw new UnsupportedOperationException("Sorry, no cofee: " + message);
+		}
+		// TODO: other codes
+		closeResponse(response);
+		throw new ConnectorException(message);
+	}
 
 	@Override
 	public FilterTranslator<RestUsersFilter> createFilterTranslator(ObjectClass arg0, OperationOptions arg1)
@@ -694,7 +724,7 @@ public class RestUsersConnector
 		}
 		return false;
 	}
-	
+
 	private ConnectorObject convertRoleToConnectorObject(JSONObject role) throws IOException
 	{
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
