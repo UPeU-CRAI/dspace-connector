@@ -247,6 +247,11 @@ public class RestUsersConnector
 			LOG.info("Update - Atributo recibido {0}: {1}", attribute.getName(), attribute.getValue());
 			String attrName = attribute.getName();
 
+			if (attribute.getValue() == null || attribute.getValue().isEmpty()) {
+				LOG.warn("El atributo {0} tiene un valor nulo o vacío. Se omitirá esta actualización.", attrName);
+				continue;
+			}
+
 			switch (attrName) {
 				case "firstname":
 					patchArray.put(createPatchOperation("replace", "/metadata/eperson.firstname/0/value", getStringAttr(attributes, attrName)));
@@ -267,7 +272,7 @@ public class RestUsersConnector
 					patchArray.put(createPatchOperation("replace", "/canLogIn", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
 					break;
 				case "requireCertificate":
-					patchArray.put(createPatchOperation("replace", "/requireCertificate", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
+					patchArray.put(createPatchOperation("replace", "/certificate", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
 					break;
 				case "selfRegistered":
 					patchArray.put(createPatchOperation("replace", "/selfRegistered", Boolean.parseBoolean(getStringAttr(attributes, attrName))));
@@ -275,7 +280,15 @@ public class RestUsersConnector
 				case "name":
 					patchArray.put(createPatchOperation("replace", "/name", getStringAttr(attributes, attrName)));
 					break;
+				default:
+					LOG.warn("Atributo desconocido: {0}. Se omitirá esta actualización.", attrName);
+					break;
 			}
+		}
+
+		if (patchArray.isEmpty()) {
+			LOG.warn("No se generaron operaciones PATCH. No se realizará ninguna actualización.");
+			throw new RuntimeException("No se generaron operaciones PATCH válidas para actualizar el usuario.");
 		}
 
 		// Construir el endpoint completo usando USERS_ENDPOINT y el UID
@@ -284,6 +297,9 @@ public class RestUsersConnector
 		HttpPatch request = new HttpPatch(endpoint);
 		StringEntity entity = new StringEntity(patchArray.toString(), ContentType.APPLICATION_JSON);
 		request.setEntity(entity);
+
+		LOG.info("Enviando solicitud PATCH a: {0}", endpoint);
+		LOG.info("Cuerpo de la solicitud PATCH: {0}", patchArray.toString());
 
 		try {
 			// Llamar al método callRequest con autenticación
@@ -296,9 +312,11 @@ public class RestUsersConnector
 
 			return new Uid(newUid);
 		} catch (IOException | ParseException | URISyntaxException e) {
+			LOG.error("Error modificando usuario por REST: {0}", e.getMessage());
 			throw new RuntimeException("Error modificando usuario por REST", e);
 		}
 	}
+
 	// Método Auxiliar createPatchOperation para update
 	// Este método auxiliar construye cada operación PATCH en el formato requerido por JSON Patch:
 	private JSONObject createPatchOperation(String op, String path, Object value) {
@@ -308,6 +326,7 @@ public class RestUsersConnector
 		patchOperation.put("value", value);
 		return patchOperation;
 	}
+
 
 
 	@Override
