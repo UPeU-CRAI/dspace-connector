@@ -155,18 +155,26 @@ public class RestUsersConnector
 	// Bloque de Operaciones CRUD
 	// ==============================
 
-	// Este método Auxiliar se encarga de crear la estructura de metadatos compatible con DSpace:
+	// Este método Auxiliar se encarga de crear la estructura de metadatos compatible con DSpace
 	private JSONArray createMetadataArray(String value) {
 		JSONArray metadataArray = new JSONArray();
+
+		if (value == null || value.trim().isEmpty()) {
+			LOG.warn("El valor para metadata está vacío o nulo. Se omitirá esta entrada.");
+			return metadataArray; // Retorna una lista vacía si el valor es nulo o vacío
+		}
+
 		JSONObject metadataObj = new JSONObject();
 		metadataObj.put("value", value);
-		metadataObj.put("language", JSONObject.NULL);
-		metadataObj.put("authority", JSONObject.NULL);
-		metadataObj.put("confidence", -1);
-		metadataObj.put("place", 0);
+		metadataObj.put("language", JSONObject.NULL);    // Puedes hacer esto configurable si es necesario
+		metadataObj.put("authority", JSONObject.NULL);   // Puedes agregar lógica para asignar valores reales
+		metadataObj.put("confidence", -1);               // Valor por defecto, configurable si es necesario
+		metadataObj.put("place", 0);                     // Valor por defecto, configurable si es necesario
+
 		metadataArray.put(metadataObj);
 		return metadataArray;
 	}
+
 
 	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering create with objectClass: {0}", objectClass.toString());
@@ -178,11 +186,16 @@ public class RestUsersConnector
 			LOG.ok("Reading attribute {0} with value {1}", attr.getName(), attr.getValue());
 			String attrName = attr.getName();
 
+			if (attr.getValue() == null || attr.getValue().isEmpty()) {
+				LOG.warn("El atributo {0} tiene un valor nulo o vacío. Se omitirá esta creación.", attrName);
+				continue;
+			}
+
 			switch (attrName) {
-				case "firstname":
+				case "firstName":
 					metadata.put("eperson.firstname", createMetadataArray(getStringAttr(attributes, attrName)));
 					break;
-				case "lastname":
+				case "lastName":
 					metadata.put("eperson.lastname", createMetadataArray(getStringAttr(attributes, attrName)));
 					break;
 				case "language":
@@ -206,6 +219,9 @@ public class RestUsersConnector
 				case "name":
 					jo.put("name", getStringAttr(attributes, attrName));
 					break;
+				default:
+					LOG.warn("Atributo desconocido: {0}. Se omitirá esta creación.", attrName);
+					break;
 			}
 		}
 
@@ -223,20 +239,31 @@ public class RestUsersConnector
 			String result = callRequest(request, jo, true);
 			response = new JSONObject(result);
 		} catch (IOException | ParseException | URISyntaxException e) {
-			throw new RuntimeException("Error during request execution", e);
+			LOG.error("Error durante la ejecución de la solicitud: {0}", e.getMessage());
+			throw new RuntimeException("Error durante la creación del usuario por REST", e);
 		}
 
 		// Obtener los enlaces del response
-		String selfLink = response.getJSONObject("_links").getJSONObject("self").getString("href");
-		String groupsLink = response.getJSONObject("_links").getJSONObject("groups").getString("href");
+		if (response.has("_links")) {
+			JSONObject links = response.getJSONObject("_links");
+			if (links.has("self")) {
+				String selfLink = links.getJSONObject("self").getString("href");
+				LOG.info("Self Link: {0}", selfLink);
+			}
+			if (links.has("groups")) {
+				String groupsLink = links.getJSONObject("groups").getString("href");
+				LOG.info("Groups Link: {0}", groupsLink);
+			}
+		}
 
-		LOG.info("Self Link: {0}", selfLink);
-		LOG.info("Groups Link: {0}", groupsLink);
-
-		String newUid = response.getString("id");
+		String newUid = response.optString("id", null);
+		if (newUid == null) {
+			throw new RuntimeException("No se encontró el ID en la respuesta del servidor.");
+		}
 		LOG.info("response UID: {0}", newUid);
 		return new Uid(newUid);
 	}
+
 
 	public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
 		LOG.ok("Entering update with objectClass: {0}", objectClass.toString());
