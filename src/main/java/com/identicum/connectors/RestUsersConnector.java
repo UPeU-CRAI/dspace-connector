@@ -253,11 +253,10 @@ public class RestUsersConnector
 			}
 
 			switch (attrName) {
-				case "firstname":
 				case "firstName":
 					patchArray.put(createPatchOperation("replace", "/metadata/eperson.firstname/0/value", getStringAttr(attributes, attrName)));
 					break;
-				case "lastname":
+				case "lastName":
 					patchArray.put(createPatchOperation("replace", "/metadata/eperson.lastname/0/value", getStringAttr(attributes, attrName)));
 					break;
 				case "language":
